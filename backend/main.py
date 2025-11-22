@@ -46,10 +46,9 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(title="AI Document Generator API")
 
 # CORS - Allow both common Vite ports
-origins = [
-    "http://localhost:5173", # This is the default Vite/React port
-    "http://localhost:3000", # Fallback
-]
+# New Code (GOOD for Vercel)
+origins = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
