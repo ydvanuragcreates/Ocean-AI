@@ -2,18 +2,33 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from passlib.context import CryptContext
 from typing import Optional
+import hashlib
 from models import User, Project, DocumentSection
 from schemas import UserCreate, ProjectCreate, DocumentSectionCreate, DocumentSectionUpdate
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
+def _preprocess_password(password: str) -> str:
+    """
+    Preprocess password by hashing with SHA-256 to ensure it's always <= 72 bytes.
+    This works around bcrypt's 72-byte limit while preserving all password information.
+    """
+    # Hash with SHA-256 to get a fixed 32-byte (64 hex chars) output
+    sha256_hash = hashlib.sha256(password.encode('utf-8')).hexdigest()
+    return sha256_hash
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    # Preprocess the plain password the same way we did when hashing
+    preprocessed = _preprocess_password(plain_password)
+    return pwd_context.verify(preprocessed, hashed_password)
 
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    # Preprocess password to ensure it's within bcrypt's 72-byte limit
+    preprocessed = _preprocess_password(password)
+    return pwd_context.hash(preprocessed)
 
 
 # User CRUD

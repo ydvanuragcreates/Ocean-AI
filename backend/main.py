@@ -46,9 +46,13 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(title="AI Document Generator API")
 
 # CORS - Allow both common Vite ports
+origins = [
+    "http://localhost:5173", # This is the default Vite/React port
+    "http://localhost:3000", # Fallback
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
