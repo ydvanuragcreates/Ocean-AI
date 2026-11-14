@@ -271,7 +271,7 @@ async def generate_outline(
     
     try:
         # Use the correct model name from available models list
-        model = genai.GenerativeModel('models/gemini-flash-latest')
+        model = genai.GenerativeModel('models/gemini-3.5-flash-lite')
         
         if request.doc_type == DocType.DOCX:
             prompt = f"""Generate a comprehensive outline for a document about "{request.topic}". 
@@ -310,7 +310,7 @@ async def generate_section(
     
     try:
         # Use the correct model name from available models list
-        model = genai.GenerativeModel('models/gemini-flash-latest')
+        model = genai.GenerativeModel('models/gemini-3.5-flash-lite')
         
         # Different prompts for DOCX vs PPTX
         if request.doc_type == DocType.PPTX:

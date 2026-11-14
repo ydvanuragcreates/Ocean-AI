@@ -2,21 +2,107 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-slate-950 text-slate-200 overflow-hidden;
+:root {
+  color-scheme: dark;
 }
 
-/* Custom Scrollbar for Glass UI */
-::-webkit-scrollbar {
-  width: 8px;
+body {
+  @apply bg-desk text-slate-200 font-sans antialiased overflow-hidden;
 }
-::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
+
+/* The desk: a faint dot grid with a violet glow from above */
+.desk-bg {
+  background-color: #0c0d10;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(139, 123, 255, 0.12), transparent 70%),
+    radial-gradient(rgba(255, 255, 255, 0.055) 1px, transparent 1px);
+  background-size: 100% 100%, 22px 22px;
 }
+
+/* A sheet of paper with a folded top-right corner.
+   The shadow lives on a wrapper because clip-path removes box-shadow. */
+.sheet-shadow {
+  filter: drop-shadow(0 28px 40px rgba(0, 0, 0, 0.55)) drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
+}
+.sheet {
+  position: relative;
+  background: #f6f3ec;
+  color: #1d1b18;
+  border-radius: 3px;
+  clip-path: polygon(0 0, calc(100% - 32px) 0, 100% 32px, 100% 100%, 0 100%);
+}
+.sheet::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(45deg, #dcd5c4 50%, transparent 50%);
+  border-bottom-left-radius: 4px;
+  pointer-events: none;
+}
+
+/* "AI is writing" shimmer for skeleton lines */
+.ai-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(29, 27, 24, 0.1) 0%,
+    rgba(139, 123, 255, 0.55) 50%,
+    rgba(29, 27, 24, 0.1) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+.ai-shimmer-dark {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(139, 123, 255, 0.5) 50%,
+    rgba(255, 255, 255, 0.06) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+/* Blinking text caret */
+.caret::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 0.9em;
+  margin-left: 3px;
+  vertical-align: -0.08em;
+  background: #8b7bff;
+  animation: blink 1s steps(1) infinite;
+}
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* Dotted leader between a table-of-contents entry and its page number */
+.leader {
+  flex: 1;
+  min-width: 1.5rem;
+  border-bottom: 1.5px dotted rgba(29, 27, 24, 0.22);
+  transform: translateY(-0.35em);
+}
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+::-webkit-scrollbar-thumb:hover { background-color: rgba(255, 255, 255, 0.22); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-shimmer, .ai-shimmer-dark, .caret::after { animation: none; }
 }

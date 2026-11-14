@@ -1,13 +1,89 @@
-import { useState, useEffect } from 'react';
-import { ThumbsUp, ThumbsDown, MessageSquare, Wand2 } from 'lucide-react';
+import { useState, useEffect, ReactNode } from 'react';
+import { ThumbsUp, ThumbsDown, MessageSquare, Wand2, PenLine } from 'lucide-react';
 import { DocumentSection } from '../services/api';
 
 interface TextCardProps {
   section: DocumentSection;
+  index: number;
   onUpdate: (updates: Partial<DocumentSection>) => void;
 }
 
-export default function TextCard({ section, onUpdate }: TextCardProps) {
+/** Render **bold** spans inside a line of AI text. */
+function inline(text: string): ReactNode[] {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+    part.startsWith('**') && part.endsWith('**') ? (
+      <strong key={i} className="font-semibold text-paper-ink">
+        {part.slice(2, -2)}
+      </strong>
+    ) : (
+      part
+    )
+  );
+}
+
+/** Turn plain AI output into paragraphs and bullet lists. */
+function renderContent(content: string) {
+  const blocks: ReactNode[] = [];
+  let bullets: string[] = [];
+  const flush = () => {
+    if (bullets.length) {
+      blocks.push(
+        <ul key={`ul-${blocks.length}`} className="space-y-2 pl-1">
+          {bullets.map((b, i) => (
+            <li key={i} className="flex gap-3">
+              <span className="mt-[0.7em] h-1.5 w-1.5 shrink-0 rounded-full bg-ink" />
+              <span>{inline(b)}</span>
+            </li>
+          ))}
+        </ul>
+      );
+      bullets = [];
+    }
+  };
+  content.split('\n').forEach((raw) => {
+    const line = raw.trim();
+    if (!line) return flush();
+    const bullet = line.match(/^([-•*]|\d+[.)])\s+(.*)$/);
+    if (bullet) {
+      bullets.push(bullet[2]);
+    } else {
+      flush();
+      blocks.push(<p key={`p-${blocks.length}`}>{inline(line.replace(/^#+\s*/, ''))}</p>);
+    }
+  });
+  flush();
+  return blocks;
+}
+
+function ToolButton({
+  label,
+  active,
+  activeClass,
+  onClick,
+  children,
+}: {
+  label: string;
+  active?: boolean;
+  activeClass?: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      aria-pressed={active}
+      className={`rounded-full p-2 transition-colors ${
+        active ? activeClass : 'text-paper-muted hover:bg-paper-edge/70 hover:text-paper-ink'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+export default function TextCard({ section, index, onUpdate }: TextCardProps) {
   const [liked, setLiked] = useState<boolean | null>(
     section.feedback === 'like' ? true : section.feedback === 'dislike' ? false : null
   );
@@ -24,20 +100,9 @@ export default function TextCard({ section, onUpdate }: TextCardProps) {
     setEditedContent(section.content);
   }, [section]);
 
-  const handleLike = () => {
-    const newLiked = liked === true ? null : true;
-    setLiked(newLiked);
-    onUpdate({ 
-      feedback: newLiked === true ? 'like' : newLiked === false ? 'dislike' : undefined 
-    });
-  };
-
-  const handleDislike = () => {
-    const newLiked = liked === false ? null : false;
-    setLiked(newLiked);
-    onUpdate({ 
-      feedback: newLiked === true ? 'like' : newLiked === false ? 'dislike' : undefined 
-    });
+  const setFeedback = (value: boolean | null) => {
+    setLiked(value);
+    onUpdate({ feedback: value === true ? 'like' : value === false ? 'dislike' : undefined });
   };
 
   const handleSaveComment = () => {
@@ -50,115 +115,124 @@ export default function TextCard({ section, onUpdate }: TextCardProps) {
     setIsEditing(false);
   };
 
+  const anyPanelOpen = showComment || showAIInstructions || isEditing;
+
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-      <div className="p-6">
-        <h3 className="text-lg font-semibold text-slate-800 mb-3">{section.heading}</h3>
-        
+    <section className="group relative">
+      {/* Heading row with margin toolbar */}
+      <div className="flex items-baseline gap-4">
+        <span className="w-8 shrink-0 font-mono text-xs text-paper-faint">
+          {String(index + 1).padStart(2, '0')}
+        </span>
+        <h2 className="flex-1 font-serif text-[30px] leading-tight text-paper-ink">{section.heading}</h2>
+        <div
+          className={`flex shrink-0 items-center gap-0.5 self-center rounded-full border border-paper-edge bg-paper px-1 py-0.5 transition-opacity ${
+            anyPanelOpen || liked !== null ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
+          }`}
+        >
+          <ToolButton
+            label="Good section"
+            active={liked === true}
+            activeClass="bg-emerald-100 text-emerald-700"
+            onClick={() => setFeedback(liked === true ? null : true)}
+          >
+            <ThumbsUp size={15} />
+          </ToolButton>
+          <ToolButton
+            label="Needs work"
+            active={liked === false}
+            activeClass="bg-rose-100 text-rose-700"
+            onClick={() => setFeedback(liked === false ? null : false)}
+          >
+            <ThumbsDown size={15} />
+          </ToolButton>
+          <span className="mx-1 h-4 w-px bg-paper-edge" />
+          <ToolButton
+            label="Edit text"
+            active={isEditing}
+            activeClass="bg-paper-ink text-paper"
+            onClick={() => setIsEditing(!isEditing)}
+          >
+            <PenLine size={15} />
+          </ToolButton>
+          <ToolButton
+            label="Ask AI to refine"
+            active={showAIInstructions}
+            activeClass="bg-ink/15 text-ink-deep"
+            onClick={() => setShowAIInstructions(!showAIInstructions)}
+          >
+            <Wand2 size={15} />
+          </ToolButton>
+          <ToolButton
+            label="Comment"
+            active={showComment}
+            activeClass="bg-amber-100 text-amber-800"
+            onClick={() => setShowComment(!showComment)}
+          >
+            <MessageSquare size={15} />
+          </ToolButton>
+        </div>
+      </div>
+
+      <div className="mt-4 pl-12">
         {isEditing ? (
-          <div className="mb-4">
+          <div>
             <textarea
               value={editedContent}
               onChange={(e) => setEditedContent(e.target.value)}
-              className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-none text-slate-700"
-              rows={8}
+              rows={10}
+              autoFocus
+              className="w-full resize-y rounded-lg border border-paper-edge bg-white p-4 text-[16px] leading-[1.75] text-paper-ink/90 focus:border-paper-ink/40 focus:outline-none"
             />
-            <div className="flex justify-end gap-2 mt-2">
+            <div className="mt-2 flex justify-end gap-2">
               <button
                 onClick={() => {
                   setIsEditing(false);
                   setEditedContent(section.content);
                 }}
-                className="px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-800 transition-colors"
+                className="rounded-full px-4 py-1.5 text-sm text-paper-muted hover:text-paper-ink"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveContent}
-                className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+                className="rounded-full bg-paper-ink px-4 py-1.5 text-sm font-medium text-paper hover:bg-black"
               >
                 Save
               </button>
             </div>
           </div>
         ) : (
-          <p 
-            className="text-slate-600 leading-relaxed mb-4 cursor-pointer hover:bg-slate-50 p-2 rounded transition-colors"
-            onClick={() => setIsEditing(true)}
+          <div
+            onDoubleClick={() => setIsEditing(true)}
+            title="Double-click to edit"
+            className="space-y-4 text-[16px] leading-[1.75] text-paper-ink/80"
           >
-            {section.content}
-          </p>
+            {renderContent(section.content || '')}
+          </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={handleLike}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all ${
-              liked === true
-                ? 'bg-green-50 border-green-300 text-green-700'
-                : 'border-slate-300 text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            <ThumbsUp size={16} />
-            <span className="text-sm font-medium">Like</span>
-          </button>
-
-          <button
-            onClick={handleDislike}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all ${
-              liked === false
-                ? 'bg-red-50 border-red-300 text-red-700'
-                : 'border-slate-300 text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            <ThumbsDown size={16} />
-            <span className="text-sm font-medium">Dislike</span>
-          </button>
-
-          <button
-            onClick={() => setShowAIInstructions(!showAIInstructions)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all ${
-              showAIInstructions
-                ? 'bg-purple-50 border-purple-300 text-purple-700'
-                : 'border-slate-300 text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            <Wand2 size={16} />
-            <span className="text-sm font-medium">Refine</span>
-          </button>
-
-          <button
-            onClick={() => setShowComment(!showComment)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all ${
-              showComment || section.comments
-                ? 'bg-blue-50 border-blue-300 text-blue-700'
-                : 'border-slate-300 text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            <MessageSquare size={16} />
-            <span className="text-sm font-medium">Comment</span>
-          </button>
-        </div>
-      </div>
-
-      {showAIInstructions && (
-        <div className="px-6 pb-6">
-          <div className="pt-4 border-t border-slate-200">
-            <label htmlFor="aiInstructions" className="block text-sm font-medium text-slate-700 mb-2">
-              AI Instructions
+        {/* Ask the AI to revise */}
+        {showAIInstructions && (
+          <div className="mt-6 rounded-lg border-l-2 border-ink bg-ink/[0.06] p-4">
+            <label
+              htmlFor={`refine-${section.id}`}
+              className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-deep"
+            >
+              <Wand2 size={12} /> Ask AI to revise
             </label>
             <textarea
-              id="aiInstructions"
+              id={`refine-${section.id}`}
               value={aiInstructions}
               onChange={(e) => setAiInstructions(e.target.value)}
-              placeholder="E.g., Make this more concise, add more technical details, change the tone to casual..."
+              placeholder="Make it more concise, add numbers, use a friendlier tone…"
               rows={3}
-              className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm resize-none"
+              className="mt-2 w-full resize-none rounded-md border border-ink/20 bg-white p-3 text-sm text-paper-ink focus:border-ink focus:outline-none"
             />
-            <div className="flex justify-end gap-2 mt-2">
+            <div className="mt-2 flex justify-end gap-2">
               <button
                 onClick={() => setShowAIInstructions(false)}
-                className="px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-800 transition-colors"
+                className="rounded-full px-4 py-1.5 text-sm text-paper-muted hover:text-paper-ink"
               >
                 Cancel
               </button>
@@ -169,46 +243,58 @@ export default function TextCard({ section, onUpdate }: TextCardProps) {
                   setAiInstructions('');
                   setShowAIInstructions(false);
                 }}
-                className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors"
+                className="rounded-full bg-ink-deep px-4 py-1.5 text-sm font-medium text-white hover:bg-ink"
               >
-                Refine Text
+                Refine
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {showComment && (
-        <div className="px-6 pb-6">
-          <div className="pt-4 border-t border-slate-200">
-            <label htmlFor="comment" className="block text-sm font-medium text-slate-700 mb-2">
-              Comment
+        {/* Margin note */}
+        {showComment ? (
+          <div className="mt-6 rounded-lg border-l-2 border-amber-500 bg-amber-50 p-4">
+            <label
+              htmlFor={`comment-${section.id}`}
+              className="font-mono text-[11px] uppercase tracking-[0.14em] text-amber-800"
+            >
+              Note
             </label>
             <textarea
-              id="comment"
+              id={`comment-${section.id}`}
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder="Share your feedback..."
+              placeholder="Leave a note on this section…"
               rows={3}
-              className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-none"
+              className="mt-2 w-full resize-none rounded-md border border-amber-200 bg-white p-3 text-sm text-paper-ink focus:border-amber-500 focus:outline-none"
             />
-            <div className="flex justify-end gap-2 mt-2">
+            <div className="mt-2 flex justify-end gap-2">
               <button
                 onClick={() => setShowComment(false)}
-                className="px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-800 transition-colors"
+                className="rounded-full px-4 py-1.5 text-sm text-paper-muted hover:text-paper-ink"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveComment}
-                className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+                className="rounded-full bg-amber-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-amber-700"
               >
-                Submit
+                Save note
               </button>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        ) : (
+          section.comments && (
+            <button
+              onClick={() => setShowComment(true)}
+              className="mt-6 block w-full rounded-lg border-l-2 border-amber-500 bg-amber-50/70 px-4 py-3 text-left"
+            >
+              <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-amber-800">Note</span>
+              <p className="mt-1 font-serif text-lg italic text-paper-ink/80">{section.comments}</p>
+            </button>
+          )
+        )}
+      </div>
+    </section>
   );
 }

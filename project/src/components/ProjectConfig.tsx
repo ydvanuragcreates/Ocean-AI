@@ -1,75 +1,182 @@
 import { useState, useEffect } from 'react';
-import { Settings, Sparkles } from 'lucide-react';
+import { Sparkles, ArrowRight } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { PageGlyph, SlideGlyph, DocType } from './DocVisuals';
 
 interface ConfigProps {
-  onNext: (topic: string, type: 'docx' | 'pptx') => void;
+  onNext: (topic: string, type: DocType) => void;
   isLoading?: boolean;
   initialTopic?: string;
-  initialDocType?: 'docx' | 'pptx';
+  initialDocType?: DocType;
 }
 
-export default function ProjectConfig({ onNext, isLoading = false, initialTopic = '', initialDocType = 'docx' }: ConfigProps) {
-  const [topic, setTopic] = useState(initialTopic);
-  const [docType, setDocType] = useState<'docx' | 'pptx'>(initialDocType);
+const STATUS = [
+  'Reading your topic',
+  'Mapping the key ideas',
+  'Structuring sections',
+  'Drafting the outline',
+];
 
-  // Update when initial values change
+const FORMATS: { value: DocType; name: string; detail: string }[] = [
+  { value: 'docx', name: 'Document', detail: 'Word · A4 pages' },
+  { value: 'pptx', name: 'Presentation', detail: 'PowerPoint · 16:9 slides' },
+];
+
+const today = new Date()
+  .toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  .toUpperCase();
+
+export default function ProjectConfig({
+  onNext,
+  isLoading = false,
+  initialTopic = '',
+  initialDocType = 'docx',
+}: ConfigProps) {
+  const [topic, setTopic] = useState(initialTopic);
+  const [docType, setDocType] = useState<DocType>(initialDocType);
+  const [statusIdx, setStatusIdx] = useState(0);
+
   useEffect(() => {
     if (initialTopic) setTopic(initialTopic);
     if (initialDocType) setDocType(initialDocType);
   }, [initialTopic, initialDocType]);
 
-  const handleSubmit = () => {
-    if (topic.trim()) {
-      onNext(topic, docType);
+  // Walk through the status messages while the AI is working
+  useEffect(() => {
+    if (!isLoading) {
+      setStatusIdx(0);
+      return;
     }
+    const t = setInterval(() => setStatusIdx((i) => Math.min(i + 1, STATUS.length - 1)), 1800);
+    return () => clearInterval(t);
+  }, [isLoading]);
+
+  const handleSubmit = () => {
+    if (topic.trim() && !isLoading) onNext(topic.trim(), docType);
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto p-8 bg-slate-900/60 backdrop-blur-md border border-white/10 rounded-2xl shadow-2xl">
-      <div className="flex items-center gap-3 mb-8">
-        <div className="p-3 bg-blue-500/20 rounded-xl text-blue-400">
-          <Settings size={24} />
-        </div>
-        <div>
-          <h2 className="text-2xl font-bold text-white">Project Configuration</h2>
-          <p className="text-slate-400 text-sm">Define the parameters for your AI document.</p>
-        </div>
-      </div>
+    <div className="w-full max-w-3xl mx-auto">
+      <div className="sheet-shadow">
+        <div className="sheet px-8 sm:px-14 pt-10 pb-12">
+          {/* Letterhead */}
+          <div className="flex items-center justify-between pb-4 border-b border-dashed border-paper-ink/15 font-mono text-[11px] uppercase tracking-[0.16em] text-paper-muted">
+            <span>New document · Draft 0</span>
+            <span>{today}</span>
+          </div>
 
-      <div className="space-y-6">
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-300">Topic or Title</label>
+          {/* Title, typed straight onto the page */}
+          <label htmlFor="doc-title" className="block mt-10 font-mono text-[11px] uppercase tracking-[0.16em] text-paper-faint">
+            Title
+          </label>
           <input
+            id="doc-title"
             type="text"
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            placeholder="e.g., Market Analysis of EV Industry 2025"
-            className="w-full px-4 py-3 bg-slate-950/50 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-slate-200 placeholder-slate-600 transition-all"
+            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+            placeholder="Untitled document"
+            autoFocus
             disabled={isLoading}
+            className="mt-2 w-full bg-transparent font-serif text-4xl sm:text-5xl leading-tight text-paper-ink placeholder:text-paper-ink/25 focus:outline-none disabled:opacity-100"
           />
-        </div>
+          <p className="mt-3 text-sm text-paper-muted">
+            Describe what it's about. The AI drafts an outline you can edit before anything is written.
+          </p>
 
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-300">Document Format</label>
-          <select 
-            value={docType}
-            onChange={(e) => setDocType(e.target.value as 'docx' | 'pptx')}
-            className="w-full px-4 py-3 bg-slate-950/50 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-slate-200 cursor-pointer"
-            disabled={isLoading}
-          >
-            <option value="docx">Microsoft Word (.docx)</option>
-            <option value="pptx">PowerPoint Presentation (.pptx)</option>
-          </select>
-        </div>
+          <AnimatePresence mode="wait">
+            {isLoading ? (
+              /* The AI writing on the page */
+              <motion.div
+                key="writing"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="mt-10"
+                aria-live="polite"
+              >
+                <div className="flex items-center gap-2 font-mono text-xs text-ink-deep">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ink opacity-60" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-ink" />
+                  </span>
+                  <span className="caret">{STATUS[statusIdx]}</span>
+                </div>
+                <div className="mt-6 space-y-6">
+                  {[0, 1, 2].map((block) => (
+                    <motion.div
+                      key={block}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: block * 0.5 }}
+                      className="space-y-2.5"
+                    >
+                      <div className="h-3.5 w-2/5 rounded-full ai-shimmer" />
+                      {[100, 94, 72].map((w, i) => (
+                        <div key={i} className="h-2 rounded-full ai-shimmer" style={{ width: `${w}%` }} />
+                      ))}
+                    </motion.div>
+                  ))}
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                {/* Format picker */}
+                <p className="mt-10 font-mono text-[11px] uppercase tracking-[0.16em] text-paper-faint">Format</p>
+                <div className="mt-3 grid grid-cols-2 gap-4" role="radiogroup" aria-label="Format">
+                  {FORMATS.map((f) => {
+                    const selected = docType === f.value;
+                    return (
+                      <button
+                        key={f.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        onClick={() => setDocType(f.value)}
+                        className={`group flex items-center gap-4 rounded-xl border p-4 text-left transition-all ${
+                          selected
+                            ? 'border-ink bg-white shadow-[0_0_0_3px_rgba(139,123,255,0.18)]'
+                            : 'border-paper-edge hover:border-paper-faint hover:bg-white/60'
+                        }`}
+                      >
+                        <div className="w-14 shrink-0">
+                          {f.value === 'docx' ? <PageGlyph className="w-11 mx-auto" /> : <SlideGlyph />}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-serif text-xl text-paper-ink leading-none">{f.name}</div>
+                          <div className="mt-1.5 font-mono text-[11px] text-paper-muted">
+                            {f.detail}
+                          </div>
+                        </div>
+                        <span
+                          className={`ml-auto h-4 w-4 shrink-0 rounded-full border-2 transition-colors ${
+                            selected ? 'border-ink bg-ink shadow-[inset_0_0_0_3px_white]' : 'border-paper-faint'
+                          }`}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-        <button 
-          onClick={handleSubmit}
-          disabled={isLoading || !topic.trim()}
-          className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-500 hover:to-violet-500 disabled:from-slate-700 disabled:to-slate-700 disabled:cursor-not-allowed text-white py-4 rounded-xl font-bold text-lg transition-all shadow-lg shadow-blue-900/20 mt-4"
-        >
-          <Sparkles size={20} />
-          {isLoading ? 'Initializing...' : 'Initialize AI Engine'}
-        </button>
+          {/* Action */}
+          <div className="mt-10 flex items-center justify-between gap-4">
+            <span className="hidden sm:block font-mono text-[11px] text-paper-faint">
+              {isLoading ? 'This usually takes a few seconds' : 'Press Enter ↵ to start'}
+            </span>
+            <button
+              onClick={handleSubmit}
+              disabled={isLoading || !topic.trim()}
+              className="group ml-auto inline-flex items-center gap-2.5 rounded-full bg-paper-ink px-6 py-3 text-sm font-medium text-paper transition-all hover:bg-black disabled:cursor-not-allowed disabled:bg-paper-ink/25"
+            >
+              <Sparkles size={16} className="text-ink-soft" />
+              {isLoading ? 'Drafting outline…' : 'Draft outline with AI'}
+              {!isLoading && <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" />}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

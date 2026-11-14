@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Download, ChevronRight, LogOut } from 'lucide-react';
+import { Download, LogOut, ArrowLeft, Check, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from './context/AuthContext';
 import { projectsAPI, aiAPI, sectionsAPI, Project, DocumentSection } from './services/api';
@@ -10,30 +10,37 @@ import Sidebar from './components/Sidebar';
 import ProjectConfig from './components/ProjectConfig';
 import OutlineSetup from './components/OutlineSetup';
 import Editor from './components/Editor';
-import NeuralBackground from './components/3d/NeuralBackground';
-import DocumentStack3D from './components/3d/DocumentStack3D';
+import { Logo, PreviewStack } from './components/DocVisuals';
+
+type Step = 'config' | 'outline' | 'editor';
+
+const STEPS: { key: Step; label: string }[] = [
+  { key: 'config', label: 'Brief' },
+  { key: 'outline', label: 'Outline' },
+  { key: 'editor', label: 'Draft' },
+];
 
 export default function App() {
   const { isAuthenticated, isLoading: authLoading, logout } = useAuth();
-  const [currentStep, setCurrentStep] = useState<'config' | 'outline' | 'editor'>('config');
-  
+  const [currentStep, setCurrentStep] = useState<Step>('config');
+
   // Project state
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
   const [sections, setSections] = useState<DocumentSection[]>([]);
-  
+
   // Config state
   const [projectTopic, setProjectTopic] = useState('');
   const [docType, setDocType] = useState<'docx' | 'pptx'>('docx');
-  
+
   // Outline state
   const [outlineSections, setOutlineSections] = useState<string[]>([]);
   const [isGeneratingOutline, setIsGeneratingOutline] = useState(false);
-  
+
   // Editor state
   const [isGeneratingContent, setIsGeneratingContent] = useState(false);
+  const [generatingIndex, setGeneratingIndex] = useState<number | null>(null);
 
-  // Load projects on mount
   useEffect(() => {
     if (isAuthenticated) {
       loadProjects();
@@ -53,16 +60,18 @@ export default function App() {
     try {
       const project = await projectsAPI.getById(Number(projectId));
       setActiveProject(project);
-      
-      // Load sections if they exist
+      setProjectTopic(project.title);
+      setDocType(project.doc_type);
+
       if (project.sections && project.sections.length > 0) {
         setSections(project.sections);
+        setOutlineSections(project.sections.map((s) => s.heading));
         setCurrentStep('editor');
       } else {
+        setSections([]);
+        setOutlineSections([]);
         setCurrentStep('config');
       }
-      
-      setDocType(project.doc_type);
     } catch (error) {
       console.error('Failed to load project:', error);
     }
@@ -73,27 +82,18 @@ export default function App() {
       setIsGeneratingOutline(true);
       setProjectTopic(topic);
       setDocType(type);
-      
-      console.log('Creating project...', { topic, type });
-      
-      // Create the project
+
       const newProject = await projectsAPI.create(topic, type);
-      console.log('Project created:', newProject);
       setActiveProject(newProject);
-      setProjects([...projects, newProject]);
-      
-      // Generate outline
-      console.log('Generating outline...');
+      setProjects((prev) => [...prev, newProject]);
+
       const generatedOutline = await aiAPI.generateOutline(topic, type);
-      console.log('Outline generated:', generatedOutline);
       setOutlineSections(generatedOutline);
-      
       setCurrentStep('outline');
-      console.log('Moved to outline step');
     } catch (error: any) {
       console.error('Failed to create project:', error);
-      console.error('Error details:', error.response?.data);
-      const errorMessage = error.response?.data?.detail || error.message || 'Failed to create project. Please try again.';
+      const errorMessage =
+        error.response?.data?.detail || error.message || 'Failed to create project. Please try again.';
       alert('Error: ' + errorMessage);
     } finally {
       setIsGeneratingOutline(false);
@@ -102,27 +102,20 @@ export default function App() {
 
   const handleGenerateContent = async () => {
     if (!activeProject) return;
-    
+
     try {
       setIsGeneratingContent(true);
       const generatedSections: DocumentSection[] = [];
-      
-      // Generate content for each section
-      for (let i = 0; i < outlineSections.length; i++) {
-        const heading = outlineSections[i];
+      const headings = outlineSections.filter((h) => h.trim());
+
+      for (let i = 0; i < headings.length; i++) {
+        setGeneratingIndex(i);
+        const heading = headings[i];
         const content = await aiAPI.generateSection(heading, projectTopic, docType);
-        
-        // Save section to backend
-        const section = await sectionsAPI.create(
-          activeProject.id,
-          heading,
-          content,
-          i
-        );
-        
+        const section = await sectionsAPI.create(activeProject.id, heading, content, i);
         generatedSections.push(section);
       }
-      
+
       setSections(generatedSections);
       setCurrentStep('editor');
     } catch (error) {
@@ -130,12 +123,12 @@ export default function App() {
       alert('Failed to generate content. Please try again.');
     } finally {
       setIsGeneratingContent(false);
+      setGeneratingIndex(null);
     }
   };
 
   const handleExport = async () => {
     if (!activeProject) return;
-    
     try {
       const blob = await projectsAPI.export(activeProject.id);
       const url = window.URL.createObjectURL(blob);
@@ -160,40 +153,39 @@ export default function App() {
     setCurrentStep('config');
   };
 
-  // Show loading while checking authentication
+  const stepAvailable = (step: Step) =>
+    !isGeneratingContent &&
+    !isGeneratingOutline &&
+    (step === 'config' || (step === 'outline' && outlineSections.length > 0) || (step === 'editor' && sections.length > 0));
+
   if (authLoading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-slate-900 text-white">
-        <div>Loading...</div>
+      <div className="desk-bg flex h-screen flex-col items-center justify-center gap-4">
+        <Logo size={36} />
+        <div className="h-1 w-24 rounded-full ai-shimmer-dark" />
       </div>
     );
   }
 
-  // Show auth screen if not authenticated
   if (!isAuthenticated) {
     return <Auth />;
   }
 
-  return (
-    <div className="flex h-screen text-slate-200 overflow-hidden">
-      {/* 1. The 3D Background Layer */}
-      <NeuralBackground />
+  const currentIdx = STEPS.findIndex((s) => s.key === currentStep);
+  const total = outlineSections.filter((h) => h.trim()).length;
 
-      {/* 2. Sidebar */}
-      <Sidebar 
-        projects={projects.map(p => ({ id: p.id.toString(), name: p.title }))} 
-        activeProject={activeProject?.id.toString() || null} 
+  return (
+    <div className="desk-bg flex h-screen overflow-hidden text-slate-200">
+      <Sidebar
+        projects={projects.map((p) => ({ id: p.id.toString(), name: p.title, docType: p.doc_type }))}
+        activeProject={activeProject?.id.toString() || null}
         onProjectSelect={handleProjectSelect}
         onNewProject={handleNewProject}
         onDeleteProject={async (id) => {
           try {
             await projectsAPI.delete(Number(id));
-            setProjects(projects.filter(p => p.id !== Number(id)));
-            if (activeProject?.id === Number(id)) {
-              setActiveProject(null);
-              setSections([]);
-              setCurrentStep('config');
-            }
+            setProjects(projects.filter((p) => p.id !== Number(id)));
+            if (activeProject?.id === Number(id)) handleNewProject();
           } catch (error) {
             console.error('Failed to delete project:', error);
             alert('Failed to delete project');
@@ -201,164 +193,198 @@ export default function App() {
         }}
       />
 
-      {/* 3. Main Content Area */}
-      <main className="flex-1 flex flex-col relative z-10 h-full">
+      <main className="flex min-w-0 flex-1 flex-col">
         {/* Header */}
-        <header className="h-16 border-b border-white/10 bg-slate-900/40 backdrop-blur-md flex items-center justify-between px-8">
-          <div className="flex items-center gap-2 text-sm text-slate-400">
-            <span>Project</span>
-            <ChevronRight size={14} />
-            <span className="text-white font-medium">
-              {activeProject?.title || 'New Generation'}
+        <header className="flex h-16 shrink-0 items-center justify-between gap-6 border-b border-white/[0.07] px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-slate-500">Library</span>
+            <span className="text-slate-600">/</span>
+            <span className="truncate font-serif text-xl text-white">
+              {activeProject?.title || projectTopic || 'Untitled document'}
             </span>
           </div>
-          <div className="flex items-center gap-3">
+
+          {/* Stepper */}
+          <nav aria-label="Progress" className="hidden lg:flex items-center gap-2">
+            {STEPS.map((step, i) => {
+              const done = i < currentIdx;
+              const active = i === currentIdx;
+              return (
+                <div key={step.key} className="flex items-center gap-2">
+                  {i > 0 && <span className={`h-px w-8 ${i <= currentIdx ? 'bg-ink/60' : 'bg-white/10'}`} />}
+                  <button
+                    onClick={() => stepAvailable(step.key) && setCurrentStep(step.key)}
+                    disabled={!stepAvailable(step.key)}
+                    aria-current={active ? 'step' : undefined}
+                    className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-sm transition-colors disabled:cursor-default ${
+                      active ? 'bg-white/[0.07] text-white' : done ? 'text-slate-300 hover:text-white' : 'text-slate-600'
+                    }`}
+                  >
+                    <span
+                      className={`flex h-5 w-5 items-center justify-center rounded-full font-mono text-[10px] ${
+                        active ? 'bg-ink text-white' : done ? 'bg-ink/20 text-ink-soft' : 'border border-white/15'
+                      }`}
+                    >
+                      {done ? <Check size={11} strokeWidth={3} /> : i + 1}
+                    </span>
+                    {step.label}
+                  </button>
+                </div>
+              );
+            })}
+          </nav>
+
+          <div className="flex shrink-0 items-center gap-2">
             {activeProject && sections.length > 0 && (
-              <button 
+              <button
                 onClick={handleExport}
-                className="flex items-center gap-2 bg-green-600/90 hover:bg-green-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-all"
+                className="flex items-center gap-2 rounded-full bg-paper px-4 py-1.5 text-sm font-medium text-paper-ink transition-colors hover:bg-white"
               >
-                <Download size={16} />
-                Export
+                <Download size={15} />
+                Export .{activeProject.doc_type}
               </button>
             )}
             <button
               onClick={logout}
-              className="flex items-center gap-2 bg-slate-700/50 hover:bg-slate-600/50 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-all"
+              title="Log out"
+              aria-label="Log out"
+              className="rounded-full p-2 text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
             >
-              <LogOut size={16} />
-              Logout
+              <LogOut size={17} />
             </button>
           </div>
         </header>
 
-        <div className="flex-1 flex overflow-hidden p-6 gap-6">
-          {/* Center Panel: The Active Task */}
-          <div className="flex-1 flex flex-col justify-center">
-            <AnimatePresence mode='wait'>
-              {currentStep === 'config' && (
-                <motion.div 
-                  key="config"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  className="w-full"
-                >
-                  <ProjectConfig 
-                    onNext={handleCreateProject}
-                    isLoading={isGeneratingOutline}
-                    initialTopic={projectTopic}
-                    initialDocType={docType}
+        {/* The desk */}
+        <div className="flex-1 overflow-y-auto">
+          <AnimatePresence mode="wait">
+            {currentStep === 'config' && (
+              <motion.div
+                key="config"
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -24 }}
+                className="flex min-h-full items-center justify-center px-6 py-12"
+              >
+                <ProjectConfig
+                  onNext={handleCreateProject}
+                  isLoading={isGeneratingOutline}
+                  initialTopic={projectTopic}
+                  initialDocType={docType}
+                />
+              </motion.div>
+            )}
+
+            {currentStep === 'outline' && (
+              <motion.div
+                key="outline"
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -24 }}
+                className="mx-auto grid max-w-6xl gap-8 px-6 py-10 lg:grid-cols-[1fr_300px]"
+              >
+                <div className="min-w-0">
+                  <OutlineSetup
+                    sections={outlineSections}
+                    onUpdateSections={setOutlineSections}
+                    docType={docType}
+                    title={projectTopic}
+                    disabled={isGeneratingContent}
                   />
-                </motion.div>
-              )}
 
-              {currentStep === 'outline' && (
-                <motion.div 
-                  key="outline"
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  className="h-full bg-slate-900/60 backdrop-blur-md border border-white/10 rounded-2xl shadow-2xl flex flex-col"
-                >
-                  <div className="flex-1 overflow-hidden">
-                    <OutlineSetup 
-                      sections={outlineSections}
-                      onUpdateSections={setOutlineSections}
-                    />
-                  </div>
-                  
-                  <div className="p-4 border-t border-white/10 flex justify-between items-center bg-slate-900/80 backdrop-blur-sm">
-                    <button 
+                  {/* Actions */}
+                  <div className="mt-8 flex flex-wrap items-center justify-between gap-4">
+                    <button
                       onClick={() => setCurrentStep('config')}
-                      className="flex items-center gap-2 text-slate-400 hover:text-white px-4 py-2 rounded-lg hover:bg-white/5 transition-all"
+                      disabled={isGeneratingContent}
+                      className="flex items-center gap-2 rounded-full px-4 py-2 text-sm text-slate-400 transition-colors hover:bg-white/5 hover:text-white disabled:opacity-40"
                     >
-                      <span>←</span>
-                      <span>Back to Config</span>
+                      <ArrowLeft size={16} /> Back to brief
                     </button>
-                    <button 
-                      onClick={handleGenerateContent}
-                      disabled={isGeneratingContent || outlineSections.length === 0}
-                      className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-500 transition-colors disabled:bg-slate-700 disabled:cursor-not-allowed font-semibold shadow-lg"
-                    >
-                      {isGeneratingContent ? '✨ Generating Content...' : '🚀 Generate Full Text'}
-                    </button>
-                  </div>
-                </motion.div>
-              )}
 
-              {currentStep === 'editor' && (
-                <motion.div 
-                  key="editor"
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="h-full w-full bg-slate-900/60 backdrop-blur-md border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+                    {isGeneratingContent && generatingIndex !== null ? (
+                      <div className="flex min-w-[280px] flex-1 items-center gap-4 sm:flex-none" aria-live="polite">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-3 font-mono text-xs">
+                            <span className="truncate text-ink-soft">
+                              Writing “{outlineSections.filter((h) => h.trim())[generatingIndex]}”
+                            </span>
+                            <span className="shrink-0 text-slate-500">
+                              {generatingIndex + 1}/{total}
+                            </span>
+                          </div>
+                          <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
+                            <motion.div
+                              className="h-full rounded-full bg-ink"
+                              animate={{ width: `${((generatingIndex + 0.5) / total) * 100}%` }}
+                              transition={{ ease: 'easeOut', duration: 0.6 }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={handleGenerateContent}
+                        disabled={total === 0}
+                        className="flex items-center gap-2.5 rounded-full bg-paper px-6 py-3 text-sm font-medium text-paper-ink transition-all hover:bg-white hover:shadow-[0_0_30px_rgba(139,123,255,0.25)] disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Sparkles size={16} className="text-ink-deep" />
+                        Write the {docType === 'docx' ? 'document' : 'slides'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Live preview */}
+                <aside className="lg:sticky lg:top-10 lg:self-start">
+                  <div className="rounded-2xl border border-white/[0.07] bg-desk-raised/70 p-4 backdrop-blur">
+                    <div className="mb-4 flex items-center justify-between">
+                      <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-slate-500">Preview</span>
+                      <span className="font-mono text-[10px] text-slate-500">
+                        {docType === 'docx' ? 'A4' : '16:9'} · {total} {docType === 'docx' ? 'pp.' : 'slides'}
+                      </span>
+                    </div>
+                    <div className="max-h-[calc(100vh-14rem)] overflow-y-auto pr-1">
+                      <PreviewStack docType={docType} sections={outlineSections.filter((h) => h.trim())} activeIndex={generatingIndex} />
+                    </div>
+                  </div>
+                </aside>
+              </motion.div>
+            )}
+
+            {currentStep === 'editor' && (
+              <motion.div
+                key="editor"
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -24 }}
+                className="mx-auto max-w-4xl px-6 py-10"
+              >
+                <button
+                  onClick={() => setCurrentStep('outline')}
+                  className="mb-6 flex items-center gap-2 rounded-full px-3 py-1.5 text-sm text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
                 >
-                  {/* Back button header */}
-                  <div className="px-6 py-3 border-b border-white/10 bg-slate-900/40 backdrop-blur-sm flex items-center gap-3">
-                    <button 
-                      onClick={() => setCurrentStep('outline')}
-                      className="flex items-center gap-2 text-slate-400 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all"
-                    >
-                      <span>←</span>
-                      <span>Back to Outline</span>
-                    </button>
-                    <div className="h-4 w-px bg-slate-700"></div>
-                    <span className="text-sm text-slate-500">
-                      You can edit the outline and regenerate content
-                    </span>
-                  </div>
-                  
-                  <div className="flex-1 overflow-y-auto">
-                    <Editor 
-                      sections={sections}
-                      onUpdateSection={async (sectionId, updates) => {
-                        try {
-                          const updated = await sectionsAPI.update(sectionId, updates);
-                          setSections(sections.map(s => s.id === sectionId ? updated : s));
-                        } catch (error) {
-                          console.error('Failed to update section:', error);
-                        }
-                      }}
-                    />
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* Right Panel: The 3D Visualization - Only show on outline step */}
-          {currentStep === 'outline' && (
-            <div className="w-80 flex flex-col bg-gradient-to-br from-slate-900/50 to-slate-800/30 backdrop-blur-md border border-blue-500/20 rounded-2xl p-4 shadow-lg shadow-blue-900/10">
-              <div className="text-sm font-bold text-blue-400 mb-4 text-center uppercase tracking-wider flex items-center justify-center gap-2">
-                <span>📊</span>
-                <span>Live Document Preview</span>
-              </div>
-              <div className="flex-1 rounded-xl overflow-hidden relative" style={{ minHeight: '450px' }}>
-                <DocumentStack3D docType={docType} itemCount={outlineSections.length || 3} />
-              </div>
-              <div className="mt-4 p-3 bg-slate-900/50 rounded-lg border border-slate-700/50">
-                <div className="text-center mb-2">
-                  {docType === 'docx' ? (
-                    <div className="text-sm font-semibold text-slate-300">📄 Standard A4 Format</div>
-                  ) : (
-                    <div className="text-sm font-semibold text-slate-300">📊 16:9 Widescreen Slides</div>
-                  )}
-                </div>
-                <div className="text-center">
-                  <span className="text-2xl font-bold text-blue-400">
-                    {outlineSections.length}
-                  </span>
-                  <span className="text-sm text-slate-400 ml-2">
-                    {docType === 'docx' ? 'Section' : 'Slide'}{outlineSections.length !== 1 ? 's' : ''}
-                  </span>
-                </div>
-              </div>
-              <div className="mt-3 p-2 bg-blue-500/10 border border-blue-500/30 rounded-lg text-xs text-blue-300 text-center">
-                💡 Add or remove sections to see the stack update!
-              </div>
-            </div>
-          )}
+                  <ArrowLeft size={16} /> Back to outline
+                </button>
+                <Editor
+                  title={activeProject?.title || projectTopic}
+                  docType={docType}
+                  sections={sections}
+                  onUpdateSection={async (sectionId, updates) => {
+                    try {
+                      const updated = await sectionsAPI.update(sectionId, updates);
+                      setSections((prev) => prev.map((s) => (s.id === sectionId ? updated : s)));
+                    } catch (error) {
+                      console.error('Failed to update section:', error);
+                    }
+                  }}
+                />
+                <p className="mt-6 text-center font-mono text-[11px] text-slate-600">
+                  Hover a section to rate, edit, refine or comment · double-click text to edit
+                </p>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </main>
     </div>
