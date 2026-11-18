@@ -1,0 +1,24 @@
+# Render Blueprint for the Ocean AI backend.
+# Secrets are NOT stored here: keys marked `sync: false` are entered
+# in the Render dashboard when you create the service.
+services:
+  - type: web
+    name: ocean-ai-backend
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    # OpenAI version. For the Gemini version use: uvicorn main:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn main_openai:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: SECRET_KEY
+        generateValue: true   # Render generates a random JWT secret
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false           # Postgres connection string (Neon / Supabase / Render)

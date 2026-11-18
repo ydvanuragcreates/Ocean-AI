@@ -10,3 +10,7 @@ GEMINI_API_KEY=your-gemini-api-key-here
 
 # OpenAI API Key (only needed for main_openai.py) - Get from https://platform.openai.com/api-keys
 OPENAI_API_KEY=your-openai-api-key-here
+
+# Database (optional locally; REQUIRED on Render so data survives restarts)
+# Leave empty to use the local SQLite file app.db
+DATABASE_URL=
