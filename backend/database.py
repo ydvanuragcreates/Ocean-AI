@@ -10,9 +10,12 @@ load_dotenv()
 # is set; fall back to a local SQLite file for development.
 SQLALCHEMY_DATABASE_URL = (os.getenv("DATABASE_URL") or "").strip() or "sqlite:///./app.db"
 
-# Some providers hand out "postgres://" URLs, which SQLAlchemy no longer accepts
-if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
-    SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
+# Providers hand out several spellings ("postgres://", "postgresql://",
+# "postgresql+psycopg://"...). Normalise them all to the psycopg2 driver,
+# which is the one listed in requirements.txt.
+_scheme, _sep, _rest = SQLALCHEMY_DATABASE_URL.partition("://")
+if _sep and _scheme.split("+")[0] in ("postgres", "postgresql"):
+    SQLALCHEMY_DATABASE_URL = "postgresql+psycopg2://" + _rest
 
 if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
     engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
