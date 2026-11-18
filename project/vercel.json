@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://ocean-ai-backend.onrender.com/:path*"
+      "destination": "https://ocean-ai-backend-9plm.onrender.com/:path*"
     }
   ]
 }
